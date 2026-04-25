@@ -51,22 +51,40 @@ class OptimisticLockTest {
 
     @Test
     void optimisticLockTest() {
+        // 1. Create and save initial record
         SomeTable someTable = new SomeTable();
-        someTable.name = "sometable1";
-        someTableRepository.save(someTable);
+        someTable.name = "initial_name";
+        someTable = someTableRepository.save(someTable);
+        Long initialVersion = someTable.version;
+        logger.info("Initial version: " + initialVersion);
 
-        SomeTable someTable2 = someTableRepository.findById(someTable.id).get();
-        assertEquals(someTable.version, someTable2.version);
+        // 2. Simulate two different users/threads loading the same record
+        // User A loads the record
+        SomeTable someTableUserA = someTableRepository.findById(someTable.id).get();
+        // User B loads the same record
+        SomeTable someTableUserB = someTableRepository.findById(someTable.id).get();
 
-        someTable.name = "nazwa1";
-        someTableRepository.save(someTable);
+        assertEquals(initialVersion, someTableUserA.version);
+        assertEquals(initialVersion, someTableUserB.version);
 
-        someTable2.name = "nazwa2";
+        // 3. User A updates the record and saves it
+        someTableUserA.name = "updated_by_A";
+        someTableUserA = someTableRepository.save(someTableUserA);
+        
+        logger.info("Version after User A update: " + someTableUserA.version);
+        // Version should have incremented
+        assertEquals(initialVersion + 1, someTableUserA.version);
 
+        // 4. User B tries to update the record using their stale version
+        someTableUserB.name = "updated_by_B";
+        
+        // This should fail because the version in the database (initialVersion + 1)
+        // is now greater than the version User B has (initialVersion).
         assertThrows(ObjectOptimisticLockingFailureException.class, () -> {
-            someTableRepository.save(someTable2);
+            someTableRepository.save(someTableUserB);
         });
-
+        
+        logger.info("Optimistic locking failure caught as expected.");
     }
 
 }
